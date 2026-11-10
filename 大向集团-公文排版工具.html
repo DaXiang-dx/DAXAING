@@ -1,0 +1,1482 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>大向集团-公文排版工具</title>
+
+<script defer src="https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+
+<style>
+/* ============================================================
+   基础与布局
+   ============================================================ */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; background: #eef1f5; color: #333; }
+.app { display: flex; height: 100vh; overflow: hidden; }
+
+/* ============================================================
+   左侧控制面板
+   ============================================================ */
+.sidebar {
+  width: 440px;
+  background: #ffffff;
+  border-right: 1px solid #dce1e8;
+  display: flex;
+  flex-direction: column;
+  z-index: 10;
+  box-shadow: 2px 0 10px rgba(0,0,0,0.02);
+  flex-shrink: 0;
+}
+
+.header { padding: 20px 24px; border-bottom: 1px solid #dce1e8; }
+.header h1 { font-size: 18px; color: #1a1a1a; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.header p { font-size: 12px; color: #888; margin-top: 4px; }
+
+.scroll-area { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 20px 24px; display: flex; flex-direction: column; gap: 24px; }
+
+/* 标签页 */
+.tabs { display: flex; background: #f1f4f8; border-radius: 8px; padding: 4px; }
+.tabs button {
+  flex: 1; border: 0; background: transparent; padding: 10px 0;
+  font-size: 13px; color: #555; border-radius: 6px; cursor: pointer;
+  transition: all 0.2s; font-weight: 500;
+}
+.tabs button:hover { color: #1a1a1a; }
+.tabs button.active { background: #fff; color: #1a1a1a; box-shadow: 0 1px 3px rgba(0,0,0,0.1); font-weight: 600; }
+
+/* 面板内容 */
+.tab-pane { display: none; flex-direction: column; gap: 12px; }
+.tab-pane.active { display: flex; animation: fadeIn 0.2s ease; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+
+/* 上传框 */
+.dropzone {
+  border: 2px dashed #cbd2d9; border-radius: 10px; padding: 30px 16px;
+  text-align: center; cursor: pointer; transition: 0.2s; background: #fafbfc;
+}
+.dropzone:hover, .dropzone.drag { border-color: #0055ff; background: #f0f5ff; }
+.dropzone svg { color: #0055ff; margin-bottom: 12px; }
+.dropzone .title { font-size: 14px; font-weight: 600; color: #333; margin-bottom: 4px; }
+.dropzone .hint { font-size: 12px; color: #888; }
+
+/* 输入框 */
+input[type="text"], input[type="url"], input[type="number"], textarea, select {
+  width: 100%; padding: 9px 12px; border: 1px solid #cbd2d9; border-radius: 6px;
+  font-size: 13px; outline: none; transition: 0.2s; font-family: inherit;
+  min-width: 0;
+}
+input[type="text"]:focus, input[type="url"]:focus, input[type="number"]:focus, textarea:focus, select:focus { border-color: #0055ff; box-shadow: 0 0 0 3px rgba(0,85,255,0.1); }
+textarea { min-height: 120px; resize: vertical; line-height: 1.6; }
+
+.btn {
+  padding: 10px 16px; border: none; border-radius: 6px; font-size: 13px;
+  cursor: pointer; transition: 0.2s; font-weight: 500; display: inline-flex;
+  align-items: center; justify-content: center; gap: 6px;
+}
+.btn.primary { background: #0055ff; color: #fff; width: 100%; }
+.btn.primary:hover { background: #0044cc; }
+.btn.secondary { background: #f1f4f8; color: #333; border: 1px solid #cbd2d9; width: 100%; }
+.btn.secondary:hover { background: #e5e9f0; }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* 自定义规则区 */
+.rules-section { border-top: 1px solid #e1e5ea; padding-top: 20px; }
+.rules-section h3 { font-size: 14px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; }
+.rules-section h3 span { font-size: 12px; color: #0055ff; cursor: pointer; font-weight: normal; }
+.rules-section h3 span:hover { text-decoration: underline; }
+.rule-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.rule-item { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.rule-item.full { grid-column: span 2; }
+.rule-item label { font-size: 12px; color: #555; font-weight: 500; }
+
+.group-title { font-size: 13px; font-weight: 600; color: #333; margin-top: 10px; margin-bottom: 2px; grid-column: span 2; border-bottom: 1px dashed #e1e5ea; padding-bottom: 4px; }
+
+/* ============================================================
+   仿 Word 页面设置界面
+   ============================================================ */
+.word-setup-box {
+  border: 1px solid #e1e5ea;
+  border-radius: 8px;
+  padding: 12px;
+  background: #fafbfc;
+  grid-column: span 2;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.setup-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 16px; }
+.setup-item { display: flex; flex-direction: column; gap: 4px; }
+.setup-item label { font-size: 12px; color: #444; font-weight: normal; }
+
+/* 带单位的输入框 */
+.input-unit-group {
+  display: flex; align-items: center; border: 1px solid #cbd2d9;
+  border-radius: 4px; background: #fff; overflow: hidden;
+}
+.input-unit-group input {
+  border: none; border-radius: 0; padding: 5px 8px; flex: 1;
+  font-size: 13px; text-align: left; outline: none;
+}
+.input-unit-group input:focus { box-shadow: none; }
+.input-unit-group span {
+  padding: 0 8px; font-size: 12px; color: #666; border-left: 1px solid #cbd2d9;
+  background: #f8f9fa; height: 100%; display: flex; align-items: center;
+}
+
+/* 方向选择卡片 */
+.orient-cards { display: flex; gap: 12px; margin-top: 4px; }
+.orient-card {
+  flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 6px; padding: 10px 0; border: 1px solid #cbd2d9; border-radius: 6px;
+  background: #fff; cursor: pointer; transition: 0.2s;
+}
+.orient-card:hover { background: #f8f9fa; }
+.orient-card.active { border-color: #0055ff; background: #f0f5ff; box-shadow: 0 0 0 1px #0055ff; }
+.orient-card svg { color: #555; }
+.orient-card.active svg { color: #0055ff; }
+.orient-card span { font-size: 12px; color: #555; }
+.orient-card.active span { color: #0055ff; font-weight: 500; }
+
+/* ============================================================
+   仿 Word 页码设置界面
+   ============================================================ */
+.page-setup-box {
+  border: 1px solid #e1e5ea;
+  border-radius: 8px;
+  padding: 12px;
+  background: #fafbfc;
+  grid-column: span 2;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.page-setup-item { display: flex; align-items: center; gap: 8px; }
+.page-setup-item label { font-size: 12px; font-weight: 600; color: #333; min-width: 40px; }
+
+/* 图形化位置选择 */
+.layout-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 4px; }
+.layout-item {
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  padding: 8px 4px; border-radius: 6px; border: 1px solid transparent;
+  cursor: pointer; transition: 0.2s;
+}
+.layout-item:hover { background: #eef1f5; }
+.layout-item.active { background: #eef5ff; border-color: #0055ff; }
+.layout-item span { font-size: 11px; color: #555; }
+.layout-item.active span { color: #0055ff; font-weight: 500; }
+
+.layout-thumb {
+  width: 36px; height: 44px; background: #fff;
+  border: 1px solid #cbd2d9; border-radius: 2px;
+  position: relative; display: flex; flex-direction: column;
+  align-items: center; padding-top: 6px; gap: 3px;
+}
+.layout-item.active .layout-thumb { border-color: #0055ff; }
+.layout-thumb .line { width: 20px; height: 1px; background: #e1e5ea; }
+.layout-thumb .num { position: absolute; bottom: 4px; font-size: 8px; color: #888; font-weight: bold; }
+.pos-left .num { left: 4px; }
+.pos-center .num { left: 50%; transform: translateX(-50%); }
+.pos-right .num { right: 4px; }
+
+/* 双面打印缩略图 */
+.layout-thumb.double {
+  flex-direction: row; padding-top: 0; border: none;
+  background: transparent; gap: 2px; align-items: stretch;
+}
+.layout-thumb.double .page-half {
+  width: 17px; border: 1px solid #cbd2d9; border-radius: 2px;
+  background: #fff; display: flex; align-items: flex-end; padding-bottom: 4px;
+}
+.layout-item.active .layout-thumb.double .page-half { border-color: #0055ff; }
+.layout-thumb.double span { font-size: 8px; color: #888; font-weight: bold; }
+
+/* 应用范围单选 */
+.scope-radios { display: flex; gap: 12px; margin-top: 2px; }
+.scope-radios label { display: flex; align-items: center; gap: 4px; font-size: 12px; font-weight: normal; cursor: pointer; }
+.scope-radios input[type="radio"] { accent-color: #0055ff; }
+
+.scope-settings {
+  display: none; margin-top: 8px; padding: 10px;
+  background: #fff; border: 1px dashed #cbd2d9; border-radius: 6px;
+  font-size: 12px; color: #555; align-items: center; gap: 4px; flex-wrap: wrap;
+}
+.scope-settings input {
+  width: 45px; padding: 2px 4px; text-align: center;
+  font-size: 12px; border-radius: 4px; border: 1px solid #cbd2d9;
+}
+
+/* 状态提示 */
+.status { font-size: 12px; color: #888; text-align: center; margin-top: 4px; min-height: 18px; }
+.status.error { color: #d32f2f; }
+.status.success { color: #2e7d32; }
+
+/* ============================================================
+   右侧预览区
+   ============================================================ */
+.preview-area { flex: 1; display: flex; flex-direction: column; background: #eef1f5; overflow: hidden; }
+.preview-toolbar {
+  height: 50px; background: #fff; border-bottom: 1px solid #dce1e8;
+  display: flex; align-items: center; justify-content: space-between; padding: 0 24px;
+  font-size: 13px; color: #555; box-shadow: 0 1px 3px rgba(0,0,0,0.02); z-index: 5;
+}
+.preview-toolbar select { padding: 4px 8px; border: 1px solid #cbd2d9; border-radius: 4px; font-size: 12px; width: auto; }
+.preview-content { flex: 1; overflow: auto; padding: 30px; text-align: center; }
+
+/* ============================================================
+   公文纸张样式
+   ============================================================ */
+.doc-page {
+  position: relative;
+  background: #fff;
+  margin: 0 auto 24px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+  overflow: hidden;
+  text-align: left;
+}
+.doc-body { width: 100%; height: 100%; overflow: hidden; }
+
+/* 段落基础 */
+.doc-p {
+  font-family: "Times New Roman", "方正仿宋_GBK", "仿宋", FangSong, serif;
+  font-size: 16pt; line-height: 29.7pt; text-indent: 2em;
+  text-align: justify; text-justify: inter-ideograph; word-break: break-all;
+  margin: 0; white-space: pre-wrap;
+}
+.doc-p.no-indent { text-indent: 0; }
+
+/* 页码 */
+.page-num {
+  position: absolute; bottom: 2.2cm;
+  font-family: "宋体", SimSun, serif; font-size: 14pt;
+  color: #000; white-space: nowrap;
+}
+.page-num.right { right: 2.55cm; }
+.page-num.left { left: 2.55cm; }
+.page-num.center { left: 50%; transform: translateX(-50%); }
+
+/* 隐藏的测量容器 */
+.measure-box { position: fixed; left: -9999px; top: 0; visibility: hidden; pointer-events: none; }
+
+/* ============================================================
+   打印适配
+   ============================================================ */
+@media print {
+  body { background: #fff; }
+  .sidebar, .preview-toolbar { display: none !important; }
+  .preview-area { overflow: visible; }
+  .preview-content { padding: 0; overflow: visible; zoom: 1 !important; text-align: left; }
+  .doc-page { margin: 0; box-shadow: none; page-break-after: always; break-after: page; }
+  .doc-page:last-child { page-break-after: auto; break-after: auto; }
+}
+</style>
+</head>
+<body>
+
+<div class="app">
+  <!-- ================= 左侧控制栏 ================= -->
+  <aside class="sidebar">
+    <div class="header">
+      <h1>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0055ff" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+        大向集团-公文排版工具V1.0
+      </h1>
+      <p>支持自动识别标题层级</p>
+    </div>
+
+    <div class="scroll-area">
+      <!-- 标签页 -->
+      <div class="tabs" id="tabs">
+        <button data-target="pane-file" class="active">上传文件</button>
+        <button data-target="pane-url">网页链接</button>
+        <button data-target="pane-paste">粘贴文本</button>
+      </div>
+
+      <!-- 上传面板 -->
+      <div class="tab-pane active" id="pane-file">
+        <div class="dropzone" id="dropzone">
+          <input type="file" id="fileInput" accept=".txt,.md,.docx,.pdf,.html" hidden>
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+          <div class="title">点击或拖拽文件至此</div>
+          <div class="hint">支持 TXT, Word(.docx), PDF, HTML</div>
+        </div>
+      </div>
+
+      <!-- 链接面板 -->
+      <div class="tab-pane" id="pane-url">
+        <input type="url" id="urlInput" placeholder="输入文章网址，如 https://...">
+        <button class="btn primary" id="fetchBtn">抓取网页正文</button>
+        <p style="font-size:11px; color:#999; line-height:1.5; margin-top:4px;">注：受浏览器安全策略限制，直接抓取可能失败。若失败，强烈建议将网页文字复制后使用“粘贴文本”。</p>
+      </div>
+
+      <!-- 粘贴面板 -->
+      <div class="tab-pane" id="pane-paste">
+        <textarea id="textInput" placeholder="在此粘贴纯文本内容……&#10;（请确保“一、”“（一）”等标题与正文之间有换行）"></textarea>
+        <button class="btn primary" id="useTextBtn">使用此文本</button>
+      </div>
+
+      <!-- 状态显示 -->
+      <div class="status" id="statusMsg">就绪</div>
+
+      <!-- 自定义排版规则 -->
+      <div class="rules-section">
+        <h3>排版规则设置 <span id="resetRulesBtn">恢复默认</span></h3>
+        <div class="rule-grid">
+          
+          <div class="group-title">文档大标题</div>
+          <div class="rule-item">
+            <label>字体</label>
+            <select id="ruleTitleFont">
+              <option value="FZXiaoBiaoSong_GBK">方正小标宋_GBK</option>
+              <option value="FZXiaoBiaoSong">方正小标宋简体</option>
+              <option value="FZDaBiaoSong">方正大标宋简体</option>
+              <option value="STZhongsong">华文中宋</option>
+              <option value="SimHei">黑体</option>
+              <option value="KaiTi">楷体</option>
+              <option value="FangSong">仿宋</option>
+            </select>
+          </div>
+          <div class="rule-item">
+            <label>字号</label>
+            <select id="ruleTitleSize">
+              <option value="26">一号 (26pt)</option>
+              <option value="24">小一 (24pt)</option>
+              <option value="22" selected>二号 (22pt)</option>
+              <option value="18">小二 (18pt)</option>
+            </select>
+          </div>
+
+          <div class="group-title">正文与标题层级</div>
+          <div class="rule-item full">
+            <label>正文字体</label>
+            <select id="ruleFont">
+              <option value="FZFangSong_GBK" selected>方正仿宋_GBK</option>
+              <option value="FangSong_GB2312">仿宋_GB2312</option>
+              <option value="FangSong">仿宋</option>
+              <option value="FZKai_GBK">方正楷体_GBK</option>
+              <option value="KaiTi_GB2312">楷体_GB2312</option>
+              <option value="KaiTi">楷体</option>
+              <option value="FZHei_GBK">方正黑体_GBK</option>
+              <option value="SimHei">黑体</option>
+              <option value="FZLiShu">方正隶二简体</option>
+              <option value="FZQiTi">方正启体简体</option>
+              <option value="SimSun">宋体</option>
+              <option value="YaHei">微软雅黑</option>
+            </select>
+          </div>
+          <div class="rule-item">
+            <label>正文字号</label>
+            <select id="ruleSize">
+              <option value="42">初号 (42pt)</option>
+              <option value="36">小初 (36pt)</option>
+              <option value="26">一号 (26pt)</option>
+              <option value="24">小一 (24pt)</option>
+              <option value="22">二号 (22pt)</option>
+              <option value="18">小二 (18pt)</option>
+              <option value="16" selected>三号 (16pt)</option>
+              <option value="15">小三 (15pt)</option>
+              <option value="14">四号 (14pt)</option>
+              <option value="12">小四 (12pt)</option>
+            </select>
+          </div>
+          <div class="rule-item">
+            <label>行距 (固定值磅)</label>
+            <input type="number" id="ruleLineHeight" value="29.7" step="0.1">
+          </div>
+
+          <div class="rule-item">
+            <label>一级标题(一、)字体</label>
+            <select id="ruleH1Font">
+              <option value="FZHei_GBK" selected>方正黑体_GBK</option>
+              <option value="SimHei">黑体</option>
+              <option value="FZFangSong_GBK">方正仿宋_GBK</option>
+              <option value="FZKai_GBK">方正楷体_GBK</option>
+            </select>
+          </div>
+          <div class="rule-item">
+            <label>一级标题字号</label>
+            <select id="ruleH1Size">
+              <option value="16" selected>三号 (16pt)</option>
+              <option value="15">小三 (15pt)</option>
+              <option value="14">四号 (14pt)</option>
+            </select>
+          </div>
+
+          <div class="rule-item">
+            <label>二级标题(（一）)字体</label>
+            <select id="ruleH2Font">
+              <option value="FZKai_GBK" selected>方正楷体_GBK</option>
+              <option value="KaiTi_GB2312">楷体_GB2312</option>
+              <option value="KaiTi">楷体</option>
+              <option value="FZFangSong_GBK">方正仿宋_GBK</option>
+              <option value="FZHei_GBK">方正黑体_GBK</option>
+            </select>
+          </div>
+          <div class="rule-item">
+            <label>二级标题字号</label>
+            <select id="ruleH2Size">
+              <option value="16" selected>三号 (16pt)</option>
+              <option value="15">小三 (15pt)</option>
+              <option value="14">四号 (14pt)</option>
+            </select>
+          </div>
+
+          <div class="rule-item">
+            <label>三级标题(1.)字体</label>
+            <select id="ruleH3Font">
+              <option value="FZFangSong_GBK" selected>方正仿宋_GBK</option>
+              <option value="FangSong_GB2312">仿宋_GB2312</option>
+              <option value="FangSong">仿宋</option>
+              <option value="FZKai_GBK">方正楷体_GBK</option>
+              <option value="FZHei_GBK">方正黑体_GBK</option>
+            </select>
+          </div>
+          <div class="rule-item">
+            <label>三级标题字号</label>
+            <select id="ruleH3Size">
+              <option value="16" selected>三号 (16pt)</option>
+              <option value="15">小三 (15pt)</option>
+              <option value="14">四号 (14pt)</option>
+            </select>
+          </div>
+
+          <div class="group-title">段落与版心细节</div>
+          <div class="rule-item full">
+            <label>首行缩进 (字符)</label>
+            <input type="number" id="ruleIndent" value="2" min="0" step="0.5">
+          </div>
+
+          <!-- 新版页面设置块 -->
+          <div class="word-setup-box">
+            <div class="setup-grid-2">
+              <!-- 页面边距 -->
+              <div class="setup-item">
+                <label>上(T)</label>
+                <div class="input-unit-group">
+                  <input type="number" id="ruleMt" value="3.5" step="0.1">
+                  <span>厘米</span>
+                </div>
+              </div>
+              <div class="setup-item">
+                <label>下(B)</label>
+                <div class="input-unit-group">
+                  <input type="number" id="ruleMb" value="2.9" step="0.1">
+                  <span>厘米</span>
+                </div>
+              </div>
+              <div class="setup-item">
+                <label>偏左(L)</label>
+                <div class="input-unit-group">
+                  <input type="number" id="ruleMl" value="2.55" step="0.1">
+                  <span>厘米</span>
+                </div>
+              </div>
+              <div class="setup-item">
+                <label>偏右(R)</label>
+                <div class="input-unit-group">
+                  <input type="number" id="ruleMr" value="2.55" step="0.1">
+                  <span>厘米</span>
+                </div>
+              </div>
+
+              <!-- 装订线 -->
+              <div class="setup-item">
+                <label>装订线位置(U)</label>
+                <select id="ruleGutterPos" style="padding: 5px 8px;">
+                  <option value="left" selected>左</option>
+                  <option value="top">上</option>
+                </select>
+              </div>
+              <div class="setup-item">
+                <label>装订线宽(G)</label>
+                <div class="input-unit-group">
+                  <input type="number" id="ruleGutter" value="0" step="0.1" min="0">
+                  <span>厘米</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="setup-grid-2" style="margin-top: 4px;">
+              <!-- 方向 -->
+              <div class="setup-item">
+                <label>方向</label>
+                <div class="orient-cards" id="orientCards">
+                  <div class="orient-card active" data-val="portrait">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect></svg>
+                    <span>纵向(P)</span>
+                  </div>
+                  <div class="orient-card" data-val="landscape">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2" ry="2"></rect></svg>
+                    <span>横向(S)</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 页码范围 -->
+              <div class="setup-item">
+                <label>页码范围</label>
+                <div style="display:flex; align-items:center; gap:8px; margin-top:4px;">
+                  <span style="font-size:12px; white-space:nowrap;">多页(M)</span>
+                  <select id="rulePageRange" style="padding: 5px 8px; flex:1;">
+                    <option value="normal" selected>普通</option>
+                    <option value="mirror">对称页边距</option>
+                    <option value="bookfold">书籍折页</option>
+                    <option value="bookfold-rev">反向书籍折页</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 仿 Word 页码设置界面 -->
+          <div class="page-setup-box">
+            <div class="page-setup-item">
+              <label>样式：</label>
+              <select id="rulePageNumStyle" style="padding: 4px 8px;">
+                <option value="simple" selected>1, 2, 3 ...</option>
+                <option value="dash">— 1 —</option>
+                <option value="hyphen">- 1 -</option>
+                <option value="chinese">第 1 页</option>
+              </select>
+            </div>
+            
+            <div>
+              <label style="font-size:12px; font-weight:600; color:#333; display:block; margin-bottom:6px;">位置：</label>
+              <div class="layout-grid" id="pagePosGrid">
+                <div class="layout-item pos-left" data-val="left">
+                  <div class="layout-thumb">
+                    <div class="line"></div><div class="line"></div><div class="line"></div>
+                    <div class="num">1</div>
+                  </div>
+                  <span>左侧</span>
+                </div>
+                <div class="layout-item pos-center active" data-val="center">
+                  <div class="layout-thumb">
+                    <div class="line"></div><div class="line"></div><div class="line"></div>
+                    <div class="num">1</div>
+                  </div>
+                  <span>居中</span>
+                </div>
+                <div class="layout-item pos-right" data-val="right">
+                  <div class="layout-thumb">
+                    <div class="line"></div><div class="line"></div><div class="line"></div>
+                    <div class="num">1</div>
+                  </div>
+                  <span>右侧</span>
+                </div>
+                <div class="layout-item pos-outer-1" data-val="outer-1">
+                  <div class="layout-thumb double">
+                    <div class="page-half" style="display:flex; align-items:flex-end; justify-content:flex-start; padding-left:4px;"><span>1</span></div>
+                    <div class="page-half" style="display:flex; align-items:flex-end; justify-content:flex-end; padding-right:4px;"><span>2</span></div>
+                  </div>
+                  <span>双面打印1</span>
+                </div>
+                <div class="layout-item pos-outer-2" data-val="outer-2">
+                  <div class="layout-thumb double">
+                    <div class="page-half" style="display:flex; align-items:flex-end; justify-content:flex-end; padding-right:4px;"><span>1</span></div>
+                    <div class="page-half" style="display:flex; align-items:flex-end; justify-content:flex-start; padding-left:4px;"><span>2</span></div>
+                  </div>
+                  <span>双面打印2</span>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <label style="font-size:12px; font-weight:600; color:#333; display:block; margin-bottom:6px;">应用范围：</label>
+              <div class="scope-radios" id="scopeRadios">
+                <label><input type="radio" name="pageScope" value="all" checked> 整篇文档</label>
+                <label><input type="radio" name="pageScope" value="after"> 本页及之后</label>
+                <label><input type="radio" name="pageScope" value="section"> 本节</label>
+              </div>
+              <div class="scope-settings" id="scopeSettings">
+                从第 <input type="number" id="scopeStartPage" value="2" min="1"> 页开始，页码从 <input type="number" id="scopeStartNum" value="1" min="1"> 起算
+              </div>
+            </div>
+          </div>
+          
+        </div>
+      </div>
+    </div>
+
+    <!-- 底部操作按钮 -->
+    <div style="padding: 20px 24px; border-top: 1px solid #dce1e8; background: #fff;">
+      <button class="btn primary" id="layoutBtn" style="margin-bottom: 12px; font-size: 14px; padding: 12px;">立即重新排版</button>
+      <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px;">
+        <button class="btn secondary" id="printBtn" style="padding: 8px 0; font-size: 12px;">打印</button>
+        <button class="btn secondary" id="pdfBtn" style="padding: 8px 0; font-size: 12px;">导出 PDF</button>
+        <button class="btn secondary" id="wordBtn" style="padding: 8px 0; font-size: 12px;">导出 Word</button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ================= 右侧预览区 ================= -->
+  <main class="preview-area">
+    <div class="preview-toolbar">
+      <span id="pageCount">等待排版</span>
+      <div style="display:flex; align-items:center; gap:8px;">
+        <span>缩放</span>
+        <select id="zoomSelect">
+          <option value="0.5">50%</option>
+          <option value="0.7">70%</option>
+          <option value="0.8" selected>80%</option>
+          <option value="0.9">90%</option>
+          <option value="1">100%</option>
+        </select>
+      </div>
+    </div>
+    <div class="preview-content" id="previewContainer">
+      <div style="margin-top: 15vh; color: #999; font-size: 14px;">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#ccc" stroke-width="1.5" style="margin-bottom: 12px;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+        <br>请在左侧导入内容，并点击“立即重新排版”
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+/* ============================================================
+   全局变量与工具
+   ============================================================ */
+const PX_PER_CM = 96 / 2.54;
+const PX_PER_PT = 96 / 72;
+const $ = id => document.getElementById(id);
+const previewContainer = $('previewContainer');
+const statusMsg = $('statusMsg');
+let currentText = "";
+let currentTitle = "";
+let currentBlocks = []; 
+
+const PAPER_SIZES = {
+  'A4': { w: 21.0, h: 29.7 },
+  'A3': { w: 29.7, h: 42.0 },
+  'B5': { w: 17.6, h: 25.0 },
+  '16K': { w: 21.0, h: 28.5 }
+};
+
+const TITLE_FONT_MAP = {
+  'FZXiaoBiaoSong_GBK': '"Times New Roman", "方正小标宋_GBK", "FZXiaoBiaoSong-B05S", "华文中宋", serif',
+  'FZXiaoBiaoSong': '"Times New Roman", "方正小标宋简体", "FZXiaoBiaoSong-B05", "华文中宋", serif',
+  'FZDaBiaoSong': '"Times New Roman", "方正大标宋简体", "FZDaBiaoSong-B06S", serif',
+  'STZhongsong': '"Times New Roman", "华文中宋", "STZhongsong", serif',
+  'SimHei': '"Times New Roman", "黑体", SimHei, sans-serif',
+  'KaiTi': '"Times New Roman", "楷体", KaiTi, serif',
+  'FangSong': '"Times New Roman", "仿宋", FangSong, serif'
+};
+
+const FONT_MAP = {
+  'FZFangSong_GBK': '"Times New Roman", "方正仿宋_GBK", "FZFangSong-Z02S", "仿宋", FangSong, serif',
+  'FangSong_GB2312': '"Times New Roman", "仿宋_GB2312", "FangSong_GB2312", "仿宋", FangSong, serif',
+  'FangSong': '"Times New Roman", "仿宋", FangSong, serif',
+  'FZKai_GBK': '"Times New Roman", "方正楷体_GBK", "FZKai-Z03S", "楷体", KaiTi, serif',
+  'KaiTi_GB2312': '"Times New Roman", "楷体_GB2312", "KaiTi_GB2312", "楷体", KaiTi, serif',
+  'KaiTi': '"Times New Roman", "楷体", KaiTi, serif',
+  'FZHei_GBK': '"Times New Roman", "方正黑体_GBK", "FZHei-B01S", "黑体", SimHei, sans-serif',
+  'SimHei': '"Times New Roman", "黑体", SimHei, sans-serif',
+  'FZLiShu': '"Times New Roman", "方正隶二简体", "FZLiShu II-S06S", "隶书", LiSu, serif',
+  'FZQiTi': '"Times New Roman", "方正启体简体", "FZQiTi-S14S", "楷体", KaiTi, serif',
+  'STZhongsong': '"Times New Roman", "华文中宋", "STZhongsong", serif',
+  'SimSun': '"Times New Roman", "宋体", SimSun, serif',
+  'YaHei': '"Times New Roman", "微软雅黑", "Microsoft YaHei", sans-serif'
+};
+
+function setStatus(msg, type = '') {
+  statusMsg.textContent = msg;
+  statusMsg.className = 'status ' + type;
+}
+
+function sanitizeFilename(name) {
+  return name.replace(/[\\/:*?"<>|]/g, '_').trim();
+}
+
+function getPageNumText(style, num) {
+  if (style === 'dash') return `— ${num} —`;
+  if (style === 'hyphen') return `- ${num} -`;
+  if (style === 'chinese') return `第 ${num} 页`;
+  return `${num}`;
+}
+
+function formatText(text) {
+  if (!text) return '&#160;';
+  let str = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return str.replace(/ /g, '&#160;');
+}
+
+/* ============================================================
+   标签页切换
+   ============================================================ */
+$('tabs').addEventListener('click', e => {
+  const btn = e.target.closest('button');
+  if (!btn) return;
+  document.querySelectorAll('#tabs button').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+  $(btn.dataset.target).classList.add('active');
+});
+
+/* ============================================================
+   图形化交互逻辑
+   ============================================================ */
+// 页码位置
+$('pagePosGrid').addEventListener('click', e => {
+  const item = e.target.closest('.layout-item');
+  if (!item) return;
+  document.querySelectorAll('#pagePosGrid .layout-item').forEach(el => el.classList.remove('active'));
+  item.classList.add('active');
+});
+
+// 纸张方向
+$('orientCards').addEventListener('click', e => {
+  const card = e.target.closest('.orient-card');
+  if (!card) return;
+  document.querySelectorAll('#orientCards .orient-card').forEach(el => el.classList.remove('active'));
+  card.classList.add('active');
+});
+
+// 页码范围
+document.querySelectorAll('input[name="pageScope"]').forEach(radio => {
+  radio.addEventListener('change', (e) => {
+    if (e.target.value !== 'all') {
+      $('scopeSettings').style.display = 'flex';
+    } else {
+      $('scopeSettings').style.display = 'none';
+    }
+  });
+});
+
+/* ============================================================
+   规则设置逻辑
+   ============================================================ */
+const defaultRules = {
+  titleFont: 'FZXiaoBiaoSong_GBK', titleSize: '22',
+  font: 'FZFangSong_GBK', size: '16', lineHeight: '29.7', indent: '2',
+  h1Font: 'FZHei_GBK', h1Size: '16',
+  h2Font: 'FZKai_GBK', h2Size: '16',
+  h3Font: 'FZFangSong_GBK', h3Size: '16',
+  mt: '3.5', mb: '2.9', ml: '2.55', mr: '2.55', gutterPos: 'left', gutter: '0',
+  orientation: 'portrait', pageRange: 'normal',
+  pageNumPos: 'center', pageNumStyle: 'simple'
+};
+
+$('resetRulesBtn').addEventListener('click', () => {
+  $('ruleTitleFont').value = defaultRules.titleFont;
+  $('ruleTitleSize').value = defaultRules.titleSize;
+  $('ruleFont').value = defaultRules.font;
+  $('ruleSize').value = defaultRules.size;
+  $('ruleLineHeight').value = defaultRules.lineHeight;
+  $('ruleIndent').value = defaultRules.indent;
+  $('ruleH1Font').value = defaultRules.h1Font;
+  $('ruleH1Size').value = defaultRules.h1Size;
+  $('ruleH2Font').value = defaultRules.h2Font;
+  $('ruleH2Size').value = defaultRules.h2Size;
+  $('ruleH3Font').value = defaultRules.h3Font;
+  $('ruleH3Size').value = defaultRules.h3Size;
+  $('ruleMt').value = defaultRules.mt;
+  $('ruleMb').value = defaultRules.mb;
+  $('ruleMl').value = defaultRules.ml;
+  $('ruleMr').value = defaultRules.mr;
+  $('ruleGutterPos').value = defaultRules.gutterPos;
+  $('ruleGutter').value = defaultRules.gutter;
+  $('rulePageRange').value = defaultRules.pageRange;
+  $('rulePageNumStyle').value = defaultRules.pageNumStyle;
+  
+  document.querySelectorAll('#orientCards .orient-card').forEach(el => el.classList.remove('active'));
+  document.querySelector(`#orientCards .orient-card[data-val="${defaultRules.orientation}"]`).classList.add('active');
+
+  document.querySelectorAll('#pagePosGrid .layout-item').forEach(el => el.classList.remove('active'));
+  document.querySelector(`#pagePosGrid .layout-item[data-val="${defaultRules.pageNumPos}"]`).classList.add('active');
+  
+  document.querySelector('input[name="pageScope"][value="all"]').checked = true;
+  $('scopeSettings').style.display = 'none';
+  $('scopeStartPage').value = 2;
+  $('scopeStartNum').value = 1;
+  
+  setStatus('已恢复默认 GB/T 9704 规则', 'success');
+  runLayout();
+});
+
+function getRules() {
+  const paperStr = $('rulePaper') ? $('rulePaper').value : 'A4';
+  const paper = PAPER_SIZES[paperStr] || PAPER_SIZES['A4'];
+  const activePosEl = document.querySelector('#pagePosGrid .layout-item.active');
+  const activeOrientEl = document.querySelector('#orientCards .orient-card.active');
+  const scopeRadio = document.querySelector('input[name="pageScope"]:checked');
+  
+  let pW = paper.w, pH = paper.h;
+  if (activeOrientEl && activeOrientEl.dataset.val === 'landscape') {
+    pW = paper.h; pH = paper.w;
+  }
+
+  return {
+    paperW: pW, paperH: pH,
+    titleFontFamily: TITLE_FONT_MAP[$('ruleTitleFont').value],
+    titleFontSize: parseFloat($('ruleTitleSize').value) || 22,
+    
+    fontFamily: FONT_MAP[$('ruleFont').value],
+    fontSize: parseFloat($('ruleSize').value) || 16,
+    
+    h1FontFamily: FONT_MAP[$('ruleH1Font').value],
+    h1FontSize: parseFloat($('ruleH1Size').value) || 16,
+    
+    h2FontFamily: FONT_MAP[$('ruleH2Font').value],
+    h2FontSize: parseFloat($('ruleH2Size').value) || 16,
+    
+    h3FontFamily: FONT_MAP[$('ruleH3Font').value],
+    h3FontSize: parseFloat($('ruleH3Size').value) || 16,
+
+    lineHeight: parseFloat($('ruleLineHeight').value) || 29.7,
+    indent: parseFloat($('ruleIndent').value) || 0,
+    mt: parseFloat($('ruleMt').value) || 3.5,
+    mb: parseFloat($('ruleMb').value) || 2.9,
+    ml: parseFloat($('ruleMl').value) || 2.55,
+    mr: parseFloat($('ruleMr').value) || 2.55,
+    
+    gutterPos: $('ruleGutterPos').value,
+    gutter: parseFloat($('ruleGutter').value) || 0,
+    pageRange: $('rulePageRange').value,
+    
+    pageNumPos: activePosEl ? activePosEl.dataset.val : 'center',
+    pageNumStyle: $('rulePageNumStyle').value,
+    
+    pageScope: scopeRadio ? scopeRadio.value : 'all',
+    scopeStartPage: parseInt($('scopeStartPage').value) || 2,
+    scopeStartNum: parseInt($('scopeStartNum').value) || 1
+  };
+}
+
+/* ============================================================
+   文件与文本提取
+   ============================================================ */
+$('dropzone').addEventListener('click', () => $('fileInput').click());
+$('fileInput').addEventListener('change', e => {
+  const file = e.target.files[0];
+  if (file) handleFile(file);
+});
+
+const dz = $('dropzone');
+['dragenter', 'dragover'].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.add('drag'); }));
+['dragleave', 'drop'].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.remove('drag'); }));
+dz.addEventListener('drop', e => {
+  const file = e.dataTransfer.files[0];
+  if (file) handleFile(file);
+});
+
+async function handleFile(file) {
+  setStatus('正在解析文件...');
+  try {
+    let text = "";
+    const name = file.name.toLowerCase();
+    
+    if (name.endsWith('.docx')) {
+      if (!window.mammoth) throw new Error("DOCX 解析库未加载");
+      const buffer = await file.arrayBuffer();
+      const res = await mammoth.extractRawText({ arrayBuffer: buffer });
+      text = res.value;
+    } else if (name.endsWith('.pdf')) {
+      text = await extractPdf(file);
+    } else {
+      text = await file.text();
+    }
+    
+    currentText = text;
+    setStatus(`成功读取：${file.name} (${text.length}字)`, 'success');
+    runLayout();
+  } catch (err) {
+    setStatus('解析失败：' + err.message, 'error');
+  }
+}
+
+async function extractPdf(file) {
+  if (!window.pdfjsLib) throw new Error("PDF 解析库未加载");
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+  const buffer = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
+  const out = [];
+  
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const content = await page.getTextContent();
+    let line = "";
+    for (const item of content.items) {
+      if (item.str.trim()) line += item.str;
+    }
+    out.push(line);
+  }
+  return out.join('\n');
+}
+
+$('fetchBtn').addEventListener('click', async () => {
+  const url = $('urlInput').value.trim();
+  if (!url) return setStatus('请输入网址', 'error');
+  
+  setStatus('正在连接代理抓取网页，请稍候...');
+  const btn = $('fetchBtn');
+  btn.disabled = true;
+
+  const proxies = [
+    u => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
+    u => `https://corsproxy.io/?${encodeURIComponent(u)}`,
+    u => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`
+  ];
+
+  let success = false;
+  let html = "";
+
+  for (const proxyFn of proxies) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 6000);
+      const res = await fetch(proxyFn(url), { signal: controller.signal });
+      clearTimeout(timeoutId);
+      if (res.ok) {
+        const t = await res.text();
+        if (t && t.length > 100) {
+          html = t;
+          success = true;
+          break;
+        }
+      }
+    } catch (e) { console.warn("代理失败", e); }
+  }
+
+  if (!success) {
+    setStatus('抓取失败。由于跨域限制，请复制文字使用「粘贴文本」。', 'error');
+    btn.disabled = false;
+    return;
+  }
+
+  try {
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    doc.querySelectorAll('script, style, nav, header, footer').forEach(el => el.remove());
+    let text = doc.body.innerText || doc.body.textContent || "";
+    if (!text.trim()) throw new Error("网页内无文本");
+    
+    currentText = text.replace(/\n{3,}/g, '\n\n').trim();
+    setStatus(`抓取成功 (${currentText.length}字)`, 'success');
+    runLayout();
+  } catch (err) {
+    setStatus('提取失败，请尝试直接复制网页文字', 'error');
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+$('useTextBtn').addEventListener('click', () => {
+  const text = $('textInput').value.trim();
+  if (!text) return setStatus('请粘贴内容', 'error');
+  currentText = text;
+  setStatus('已应用粘贴文本', 'success');
+  runLayout();
+});
+
+/* ============================================================
+   文本处理
+   ============================================================ */
+function parseBlocks(text) {
+  let processed = text.replace(/([^\n])\s*([一二三四五六七八九十百]+、)/g, '$1\n$2');
+  processed = processed.replace(/([^\n])\s*(（[一二三四五六七八九十百]+）)/g, '$1\n$2');
+  processed = processed.replace(/([^\n])\s*(\d{1,2}[．.、])/g, '$1\n$2');
+
+  const lines = processed.replace(/\r\n/g, '\n').split('\n').map(l => l.trim()).filter(l => l);
+  if (!lines.length) return [];
+  
+  const blocks = [];
+  blocks.push({ type: 'title', text: lines[0] });
+  blocks.push({ type: 'blank', text: '' });
+  
+  let buf = "";
+  const processBuf = () => {
+    if (!buf) return;
+    let type = 'body';
+    if (/^[一二三四五六七八九十百]+、/.test(buf)) type = 'h1';
+    else if (/^（[一二三四五六七八九十百]+）/.test(buf)) type = 'h2';
+    else if (/^\d{1,2}[．.、]/.test(buf)) type = 'h3';
+    blocks.push({ type, text: buf });
+    buf = "";
+  };
+
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i];
+    if (!buf) { buf = line; continue; }
+    
+    const isNextHeading = /^([一二三四五六七八九十百]+、|（[一二三四五六七八九十百]+）|\d{1,2}[．.、])/.test(line);
+    const isEnded = /[。！？!?；;」』”"）)]$/.test(buf);
+    const isShort = buf.length < 25 && !/[，。；]/.test(buf);
+    
+    if (isNextHeading || isEnded || isShort) {
+      processBuf();
+      buf = line;
+    } else {
+      buf += line;
+    }
+  }
+  processBuf();
+  return blocks;
+}
+
+/* ============================================================
+   核心排版算法
+   ============================================================ */
+async function runLayout() {
+  if (!currentText) return setStatus('没有可排版的内容', 'error');
+  
+  try { await document.fonts.ready; } catch (e) {}
+  
+  const rules = getRules();
+  
+  const pageW = rules.paperW * PX_PER_CM;
+  const pageH = rules.paperH * PX_PER_CM;
+  
+  // 基础边距（不含装订线）
+  const basePadT = rules.mt * PX_PER_CM;
+  const basePadB = rules.mb * PX_PER_CM;
+  const basePadL = rules.ml * PX_PER_CM;
+  const basePadR = rules.mr * PX_PER_CM;
+  const gutterPx = rules.gutter * PX_PER_CM;
+
+  // 计算全局版心尺寸（用于测量行数）
+  let baseBodyPadT = basePadT;
+  let baseBodyPadL = basePadL;
+  if (rules.gutterPos === 'top') baseBodyPadT += gutterPx;
+  else baseBodyPadL += gutterPx;
+
+  const bodyW = pageW - baseBodyPadL - basePadR;
+  const bodyH = pageH - baseBodyPadT - basePadB;
+  const lineH = rules.lineHeight * PX_PER_PT;
+  const rowsPerPage = Math.floor(bodyH / lineH);
+  
+  const blocks = parseBlocks(currentText);
+  currentBlocks = blocks; 
+
+  if (blocks.length > 0 && blocks[0].type === 'title') {
+    currentTitle = sanitizeFilename(blocks[0].text);
+  } else {
+    currentTitle = "公文";
+  }
+
+  const measureBox = document.createElement('div');
+  measureBox.className = 'measure-box';
+  measureBox.style.width = bodyW + 'px';
+  document.body.appendChild(measureBox);
+  
+  const pages = [];
+  let currentPageRows = [];
+  let remainRows = rowsPerPage;
+  
+  const getStyle = (type) => {
+    if (type === 'title') return { ff: rules.titleFontFamily, fs: rules.titleFontSize };
+    if (type === 'h1') return { ff: rules.h1FontFamily, fs: rules.h1FontSize };
+    if (type === 'h2') return { ff: rules.h2FontFamily, fs: rules.h2FontSize };
+    if (type === 'h3') return { ff: rules.h3FontFamily, fs: rules.h3FontSize };
+    return { ff: rules.fontFamily, fs: rules.fontSize };
+  };
+
+  for (const b of blocks) {
+    let rows = 1;
+    if (b.type !== 'blank') {
+      const p = document.createElement('p');
+      p.className = 'doc-p';
+      const style = getStyle(b.type);
+      p.style.fontFamily = style.ff;
+      p.style.fontSize = style.fs + 'pt';
+      p.style.lineHeight = rules.lineHeight + 'pt';
+      p.style.textIndent = b.type === 'title' ? '0' : rules.indent + 'em';
+      p.style.textAlign = b.type === 'title' ? 'center' : 'justify';
+      
+      p.innerHTML = formatText(b.text);
+      
+      measureBox.appendChild(p);
+      const h = p.getBoundingClientRect().height;
+      rows = Math.max(1, Math.ceil((h - 1) / lineH)); 
+      measureBox.removeChild(p);
+    }
+    
+    let isContinuation = false;
+    while (rows > 0) {
+      if (remainRows <= 0) {
+        pages.push(currentPageRows);
+        currentPageRows = [];
+        remainRows = rowsPerPage;
+      }
+      if (rows <= remainRows) {
+        currentPageRows.push({ ...b, rows, isContinuation });
+        remainRows -= rows;
+        rows = 0;
+      } else {
+        currentPageRows.push({ ...b, rows: remainRows, isContinuation });
+        rows -= remainRows;
+        isContinuation = true;
+        pages.push(currentPageRows);
+        currentPageRows = [];
+        remainRows = rowsPerPage;
+      }
+    }
+  }
+  if (currentPageRows.length) pages.push(currentPageRows);
+  document.body.removeChild(measureBox);
+
+  previewContainer.innerHTML = '';
+  
+  let printStyleEl = document.getElementById('dynamic-print-style');
+  if (!printStyleEl) {
+    printStyleEl = document.createElement('style');
+    printStyleEl.id = 'dynamic-print-style';
+    document.head.appendChild(printStyleEl);
+  }
+  printStyleEl.textContent = `@media print { @page { size: ${rules.paperW}cm ${rules.paperH}cm; margin: 0; } }`;
+
+  pages.forEach((pageRows, index) => {
+    const pageEl = document.createElement('div');
+    pageEl.className = 'doc-page';
+    pageEl.style.width = pageW + 'px';
+    pageEl.style.height = pageH + 'px';
+    
+    // === 核心：根据页码范围计算当前页的边距（包含镜像、装订线计算）===
+    let currentPadT = basePadT;
+    let currentPadL = basePadL;
+    let currentPadR = basePadR;
+    
+    if (rules.gutterPos === 'top') {
+        currentPadT += gutterPx;
+    }
+
+    if (rules.pageRange === 'mirror' || rules.pageRange === 'bookfold' || rules.pageRange === 'bookfold-rev') {
+        // 对称页边距 / 书籍折页逻辑
+        if (rules.gutterPos === 'left') {
+            if (index % 2 === 0) currentPadL += gutterPx; // 奇数页装订线在左
+            else currentPadR += gutterPx;                 // 偶数页装订线在右
+        }
+        if (rules.pageRange === 'mirror') {
+            if (index % 2 === 1) { // 偶数页左右边距对调
+                let temp = currentPadL;
+                currentPadL = currentPadR;
+                currentPadR = temp;
+            }
+        }
+    } else {
+        // 普通模式
+        if (rules.gutterPos === 'left') currentPadL += gutterPx;
+    }
+
+    pageEl.style.paddingTop = currentPadT + 'px';
+    pageEl.style.paddingBottom = basePadB + 'px';
+    pageEl.style.paddingLeft = currentPadL + 'px';
+    pageEl.style.paddingRight = currentPadR + 'px';
+    
+    const bodyEl = document.createElement('div');
+    bodyEl.className = 'doc-body';
+    
+    pageRows.forEach(r => {
+      const p = document.createElement('p');
+      p.className = `doc-p ${r.isContinuation ? 'no-indent' : ''}`;
+      
+      const style = getStyle(r.type);
+      p.style.fontFamily = style.ff;
+      p.style.fontSize = style.fs + 'pt';
+      p.style.lineHeight = rules.lineHeight + 'pt';
+      
+      if (r.type === 'title') {
+        p.style.textAlign = 'center';
+        p.style.textIndent = '0';
+      } else {
+        p.style.textIndent = r.isContinuation ? '0' : rules.indent + 'em';
+      }
+      
+      p.style.height = (r.rows * lineH) + 'px';
+      p.style.overflow = 'hidden';
+      
+      p.innerHTML = formatText(r.text);
+      bodyEl.appendChild(p);
+    });
+    
+    pageEl.appendChild(bodyEl);
+    
+    // ===== 渲染页码 =====
+    const pageNum = index + 1;
+    let showNum = true;
+    let displayNum = pageNum;
+    
+    if (rules.pageScope !== 'all') {
+      if (pageNum < rules.scopeStartPage) {
+        showNum = false;
+      } else {
+        displayNum = pageNum - rules.scopeStartPage + rules.scopeStartNum;
+      }
+    }
+    
+    if (showNum) {
+      const pn = document.createElement('div');
+      let align = rules.pageNumPos;
+      
+      if (align === 'outer-1') {
+        align = (index % 2 === 0) ? 'right' : 'left';
+      } else if (align === 'outer-2') {
+        align = (index % 2 === 0) ? 'left' : 'right';
+      }
+      
+      pn.className = `page-num ${align}`;
+      pn.style.bottom = (rules.mb - 0.7) + 'cm'; // 保持原来的底距
+      pn.textContent = getPageNumText(rules.pageNumStyle, displayNum);
+      pageEl.appendChild(pn);
+    }
+    
+    previewContainer.appendChild(pageEl);
+  });
+  
+  $('pageCount').textContent = `共 ${pages.length} 页 | 每页 ${rowsPerPage} 行`;
+  setStatus(`排版成功，已生成 ${pages.length} 页`, 'success');
+  applyZoom();
+}
+
+/* ============================================================
+   缩放、打印与导出
+   ============================================================ */
+function applyZoom() {
+  const zoom = parseFloat($('zoomSelect').value) || 1;
+  previewContainer.style.zoom = zoom;
+}
+$('zoomSelect').addEventListener('change', applyZoom);
+$('layoutBtn').addEventListener('click', runLayout);
+
+// 1. 打印
+$('printBtn').addEventListener('click', () => {
+  if (!previewContainer.querySelector('.doc-page')) return setStatus('请先排版', 'error');
+  window.print();
+});
+
+// 2. 导出 PDF
+$('pdfBtn').addEventListener('click', () => {
+  if (!previewContainer.querySelector('.doc-page')) return setStatus('请先排版', 'error');
+  const defaultName = currentTitle || '公文';
+  alert(`即将唤起浏览器打印窗口。\n请在目标打印机中选择“另存为 PDF”，并将文件名修改为：\n【 ${defaultName} 】`);
+  setStatus('正在唤起打印，请选择另存为 PDF...', 'success');
+  setTimeout(() => window.print(), 600);
+});
+
+// 3. 导出 Word
+$('wordBtn').addEventListener('click', () => {
+  if (!currentBlocks || currentBlocks.length === 0) return setStatus('请先排版', 'error');
+
+  const defaultName = currentTitle || '未命名公文';
+  let userFileName = prompt("请输入导出的 Word 文件名：", defaultName);
+  
+  if (userFileName === null) return;
+  userFileName = sanitizeFilename(userFileName) || '未命名公文';
+  
+  const rules = getRules();
+  
+  const getWordFont = (val) => {
+    const map = {
+      'FZFangSong_GBK': '方正仿宋_GBK', 'FangSong_GB2312': '仿宋_GB2312', 'FangSong': '仿宋',
+      'FZKai_GBK': '方正楷体_GBK', 'KaiTi_GB2312': '楷体_GB2312', 'KaiTi': '楷体',
+      'FZHei_GBK': '方正黑体_GBK', 'SimHei': '黑体', 'FZLiShu': '方正隶二简体',
+      'FZQiTi': '方正启体简体', 'STZhongsong': '华文中宋', 'SimSun': '宋体', 'YaHei': '微软雅黑',
+      'FZXiaoBiaoSong_GBK': '方正小标宋_GBK', 'FZXiaoBiaoSong': '方正小标宋简体', 'FZDaBiaoSong': '方正大标宋简体'
+    };
+    return map[val] || '仿宋';
+  };
+
+  const titleFont = getWordFont($('ruleTitleFont').value);
+  const bodyFont = getWordFont($('ruleFont').value);
+  const h1Font = getWordFont($('ruleH1Font').value);
+  const h2Font = getWordFont($('ruleH2Font').value);
+  const h3Font = getWordFont($('ruleH3Font').value);
+
+  const cmToPt = (cm) => (cm * 28.3464567).toFixed(1);
+  const mtPt = cmToPt(rules.mt);
+  const mbPt = cmToPt(rules.mb);
+  const mlPt = cmToPt(rules.ml);
+  const mrPt = cmToPt(rules.mr);
+  const gutterPt = cmToPt(rules.gutter);
+  const indentPt = (rules.fontSize * rules.indent).toFixed(1);
+
+  let wordAlign = 'center';
+  if (rules.pageNumPos === 'right' || rules.pageNumPos === 'outer-1') wordAlign = 'right';
+  if (rules.pageNumPos === 'left' || rules.pageNumPos === 'outer-2') wordAlign = 'left';
+
+  const footerMarginPt = cmToPt(rules.mb > 1.75 ? 1.75 : rules.mb / 2);
+  const scopeWarning = rules.pageScope !== 'all' ? "（注意：网页已按范围显示，导出 Word 后如需局部页码，请在 Word 中设置分节符）" : "";
+
+  const orientStyle = rules.paperW > rules.paperH ? 'landscape' : 'portrait';
+  const isMirror = rules.pageRange === 'mirror' ? 'yes' : 'no';
+
+  // 注入书籍折页等底层 OOXML 标签
+  let extraXml = '';
+  if (rules.pageRange === 'bookfold') extraXml = '<w:BookFoldPrinting/>';
+  if (rules.pageRange === 'bookfold-rev') extraXml = '<w:BookFoldRevPrinting/>';
+
+  let html = `
+    <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
+    <head>
+      <meta charset="utf-8">
+      <title>${userFileName}</title>
+      
+      <!--[if gte mso 9]><xml>
+        <w:WordDocument>
+          <w:View>Print</w:View>
+          <w:Zoom>100</w:Zoom>
+          <w:DoNotOptimizeForBrowser/>
+          ${extraXml}
+        </w:WordDocument>
+      </xml><![endif]-->
+
+      <style>
+        @page WordSection1 {
+          size: ${rules.paperW}cm ${rules.paperH}cm;
+          margin: ${mtPt}pt ${mrPt}pt ${mbPt}pt ${mlPt}pt;
+          mso-page-orientation: ${orientStyle};
+          mso-mirror-margins: ${isMirror};
+          ${rules.gutter > 0 ? `mso-gutter: ${gutterPt}pt; mso-gutter-direction: ${rules.gutterPos};` : ''}
+          mso-footer: f1;
+          mso-footer-margin: ${footerMarginPt}pt;
+        }
+        div.WordSection1 { page: WordSection1; }
+        
+        body {
+          font-family: "Times New Roman", serif;
+          mso-fareast-font-family: "${bodyFont}";
+          font-size: ${rules.fontSize}pt;
+          margin: 0;
+        }
+        
+        p {
+          margin: 0;
+          line-height: ${rules.lineHeight}pt;
+          mso-line-height-rule: exactly;
+          text-align: justify;
+          text-justify: inter-ideograph;
+          text-indent: ${indentPt}pt;
+          mso-char-indent-count: ${rules.indent}.0;
+        }
+        
+        .title {
+          font-family: "Times New Roman", serif;
+          mso-fareast-font-family: "${titleFont}";
+          font-size: ${rules.titleFontSize}pt;
+          text-align: center;
+          text-indent: 0;
+          mso-char-indent-count: 0;
+        }
+        .h1 {
+          font-family: "Times New Roman", serif;
+          mso-fareast-font-family: "${h1Font}";
+          font-size: ${rules.h1FontSize}pt;
+        }
+        .h2 {
+          font-family: "Times New Roman", serif;
+          mso-fareast-font-family: "${h2Font}";
+          font-size: ${rules.h2FontSize}pt;
+        }
+        .h3 {
+          font-family: "Times New Roman", serif;
+          mso-fareast-font-family: "${h3Font}";
+          font-size: ${rules.h3FontSize}pt;
+        }
+
+        div.f1 {
+          mso-element: footer;
+          font-family: "宋体", SimSun, serif;
+          font-size: 14pt;
+          text-align: ${wordAlign};
+        }
+      </style>
+    </head>
+    <body>
+      <div class="WordSection1">
+  `;
+
+  let bodyContent = '';
+  currentBlocks.forEach((b) => {
+    if (b.type === 'blank') {
+      bodyContent += `<p style="text-indent:0;mso-char-indent-count:0;">&#160;</p>`;
+      return;
+    }
+    
+    let cls = 'body';
+    if (b.type === 'title') cls = 'title';
+    else if (b.type === 'h1') cls = 'h1';
+    else if (b.type === 'h2') cls = 'h2';
+    else if (b.type === 'h3') cls = 'h3';
+    
+    let safeText = formatText(b.text);
+    bodyContent += `<p class="${cls}">${safeText}</p>`;
+  });
+
+  let pStyle = rules.pageNumStyle;
+  let prefix = '', suffix = '';
+  if (pStyle === 'dash') { prefix = '— '; suffix = ' —'; }
+  if (pStyle === 'hyphen') { prefix = '- '; suffix = ' -'; }
+  if (pStyle === 'chinese') { prefix = '第 '; suffix = ' 页'; }
+  if (pStyle === 'simple') { prefix = ''; suffix = ''; }
+
+  let wordStartNum = rules.pageScope !== 'all' ? rules.scopeStartNum : 1;
+
+  html += bodyContent + `
+      </div>
+      
+      <div style='mso-element:footer' id="f1">
+        <p style='text-align:${wordAlign};margin:0;line-height:1;'>
+          <span style='mso-field-code:PAGE \\* MERGEFORMAT;font-family:"宋体";font-size:14pt;'>${prefix}${wordStartNum}${suffix}</span>
+        </p>
+      </div>
+    </body>
+    </html>
+  `;
+
+  const blob = new Blob(['\ufeff', html], { type: 'application/msword' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${userFileName}.doc`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  setStatus(`已成功导出 Word：${userFileName}.doc ${scopeWarning}`, 'success');
+});
+
+/* ============================================================
+   初始化
+   ============================================================ */
+const SAMPLE_TEXT = `关于加强机关公文格式规范管理的通知
+
+各处室、直属各单位：
+为进一步提升机关公文办理质量，统一公文格式标准，根据《党政机关公文处理工作条例》和《党政机关公文格式》（GB/T 9704—2012）有关规定，结合工作实际，现就有关事项通知如下。
+
+一、总体要求
+公文格式是机关形象和工作作风的直接体现。各处室要高度重视公文格式规范化工作，严格按照国家标准执行，确保公文庄重、准确、规范、高效。
+
+（一）统一思想认识。
+要把公文格式规范作为提升机关效能的基础性工作来抓，组织干部职工认真学习相关标准，切实增强规范意识，养成严谨细致的工作习惯。
+
+（二）落实工作责任。
+各处室主要负责人是公文质量第一责任人，要指定专人负责公文校核，确保格式、内容、文字准确无误。
+
+1．严格审核把关。
+公文起草人员要对照格式标准逐项自查，重点核对标题层次、字体字号、行距页边距等要素，发现问题及时纠正。
+
+2．强化业务培训。
+办公室将定期组织公文写作与格式规范专题培训，提升全体人员的业务能力和规范意识。
+
+二、规范格式标准
+（一）标题。公文标题使用2号方正小标宋_GBK，居中排布，可分一行或多行排列。
+（二）正文。正文使用3号方正仿宋_GBK，行距为固定值29.7磅，首行缩进2字符。
+（三）数字。正文中出现的阿拉伯数字和英文字母，一律使用Times New Roman字体，字号与正文相同。
+
+三、加强监督检查
+办公室将不定期对各处室公文格式执行情况进行抽查，对格式不规范、质量不达标的公文予以退回并通报。请各处室自本通知印发之日起严格执行。
+
+特此通知。
+
+XX市人民政府办公室
+2024年12月20日`;
+
+window.addEventListener('load', () => {
+  $('textInput').value = SAMPLE_TEXT;
+  currentText = SAMPLE_TEXT;
+  runLayout();
+});
+</script>
+</body>
+</html>
